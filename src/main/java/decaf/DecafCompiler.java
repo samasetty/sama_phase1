@@ -21,8 +21,6 @@ public class DecafCompiler {
                 : new PrintStream(outputStream);
 
         for (DecafToken token : tokens) {
-            if (token.tokenType == DecafTokenType.EOF) continue; // skip EOF
-
             switch (token.tokenType) {
                 case LONGLITERAL, INTLITERAL, STRINGLITERAL, CHARLITERAL, BOOLEANLITERAL ->
                     ps.printf("%d %s %s%n", token.line, token.tokenType, token.lexeme);
@@ -70,9 +68,12 @@ public class DecafCompiler {
                         System.exit(1);
                     }
                 }
-                case PARSE -> { /* Placeholder for parser */ }
-                case INTER -> { /* Placeholder for IR gen */ }
-                case ASSEMBLY -> { /* Placeholder for assembly gen */ }
+                case PARSE -> {
+                }
+                case INTER -> {
+                }
+                case ASSEMBLY -> {
+                }
             }
 
         } catch (IOException ioe) {
@@ -121,8 +122,7 @@ enum DecafTokenType {
     EQUAL_EQUAL, BANG_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL,
     AND_AND, OR_OR, BANG, PLUS_PLUS, MINUS_MINUS,
     LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
-    LEFT_BRACKET, RIGHT_BRACKET, SEMICOLON, COMMA,
-    EOF
+    LEFT_BRACKET, RIGHT_BRACKET, SEMICOLON, COMMA
 }
 
 class DecafToken {
@@ -159,7 +159,6 @@ class DecafScanner {
     private int line = 1;
     private int col = 1;
 
-    // We do NOT include "true" / "false" here. They are recognized as BOOLEANLITERAL
     private static final Map<String, DecafTokenType> keywords = new HashMap<>();
     static {
         keywords.put("int", DecafTokenType.INT);
@@ -186,7 +185,6 @@ class DecafScanner {
             start = current;
             scanToken();
         }
-        tokens.add(new DecafToken(DecafTokenType.EOF, "", null, line, col));
         return tokens;
     }
 
@@ -217,10 +215,8 @@ class DecafScanner {
             }
             case '/' -> {
                 if (match('/')) {
-                    // line comment
                     while (!isAtEnd() && peek() != '\n') advance();
                 } else if (match('*')) {
-                    // block comment
                     while (!isAtEnd()) {
                         if (peek() == '*' && peekNext() == '/') {
                             advance();
@@ -264,7 +260,9 @@ class DecafScanner {
                 if (match('|')) addToken(DecafTokenType.OR_OR);
                 else DecafCompiler.error(line, col, "Unexpected character '|'. Maybe '||'?");
             }
-            case ' ', '\r', '\t', '\f' -> { /* skip whitespace */ }
+            case ' ', '\r', '\t', '\f' -> {
+
+            }
             case '\n' -> {
                 line++;
                 col = 0;
@@ -286,19 +284,16 @@ class DecafScanner {
     }
 
     // ---------- BOOLEANS & KEYWORDS ----------
-    // For "true"/"false", we yield BOOLEANLITERAL. For "int"/"bool" etc., we yield keywords.
     private void scanIdentifierOrKeyword() {
         while (isAlphaNumeric(peek())) {
             advance();
         }
         String text = source.substring(start, current);
         
-        // If it's "true" or "false", treat it as a BOOLEANLITERAL
         if (text.equals("true") || text.equals("false")) {
             addToken(DecafTokenType.BOOLEANLITERAL, text);
             return;
         }
-        // Otherwise, check if it's a known keyword
         DecafTokenType type = keywords.getOrDefault(text, DecafTokenType.IDENTIFIER);
         addToken(type, text);
     }
@@ -311,7 +306,6 @@ class DecafScanner {
         while (!isAtEnd()) {
             char c = peek();
             if (c == '"') {
-                // closing quote
                 advance();
                 sb.append('"');
                 addToken(DecafTokenType.STRINGLITERAL, sb.toString());
@@ -323,7 +317,7 @@ class DecafScanner {
                 return;
             }
             if (c == '\\') {
-                advance(); // consume '\'
+                advance();
                 if (isAtEnd()) {
                     DecafCompiler.error(line, col, "Unfinished escape at EOF.");
                     return;
@@ -406,7 +400,6 @@ class DecafScanner {
                 }
             }
         } else {
-            // normal char => ASCII 32..126, not ' " \
             if (!isPrintableChar(c)) {
                 DecafCompiler.error(line, col, "Non-printable char code=" + (int)c + " in char literal.");
             } else if (c == '\'' || c == '"' || c == '\\') {
@@ -415,7 +408,6 @@ class DecafScanner {
             sb.append(c);
         }
 
-        // Now expect closing single quote
         if (isAtEnd()) {
             DecafCompiler.error(line, col, "Unterminated char literal (missing closing ').");
             return;
@@ -435,17 +427,11 @@ class DecafScanner {
 
     // ---------- NUMBER LITERAL ----------------
     private void scanNumberOrLongLiteral(char firstDigit) {
-        // If it's 0x => hex
-        // (Note we ONLY check for lowercase 'x'. If you want to allow uppercase 'X',
-        //  you would handle that here. But the spec says uppercase is NOT recognized as hex.)
         if (firstDigit == '0' && peek() == 'x') {
-            // consume the 'x'
             advance();
-            // read hex digits
             while (isHexDigit(peek())) {
                 advance();
             }
-            // check for 'L'
             if (peek() == 'L') {
                 advance();
                 addToken(DecafTokenType.LONGLITERAL, source.substring(start, current));
@@ -453,11 +439,9 @@ class DecafScanner {
                 addToken(DecafTokenType.INTLITERAL, source.substring(start, current));
             }
         } else {
-            // decimal literal
             while (isDigit(peek())) {
                 advance();
             }
-            // check for 'L'
             if (peek() == 'L') {
                 advance();
                 addToken(DecafTokenType.LONGLITERAL, source.substring(start, current));
@@ -466,7 +450,6 @@ class DecafScanner {
             }
         }
     }
-    
 
     private void consumeUntilCharOrEOF(char endChar) {
         while (!isAtEnd() && peek() != endChar) {
