@@ -12,35 +12,32 @@ import java.util.Map;
 
 public class DecafCompiler {
 
-    // We track errors globally in a way similar to Lox's "hadError" mechanism.
     static boolean hadError = false;
-    static String inputFilename = ""; // For error messages
+    static String inputFilename = "";
 
     private static void printTokens(List<DecafToken> tokens, OutputStream outputStream) {
-        // If outputStream is System.out, cast is safe. Otherwise, wrap in a PrintStream.
-        PrintStream printStream;
-        if (outputStream instanceof PrintStream) {
-            printStream = (PrintStream) outputStream;
-        } else {
-            printStream = new PrintStream(outputStream);
-        }
+        PrintStream ps = (outputStream instanceof PrintStream)
+                ? (PrintStream) outputStream
+                : new PrintStream(outputStream);
 
         for (DecafToken token : tokens) {
-            if (token.tokenType == DecafTokenType.EOF) continue; // Skip EOF
-            
+            if (token.tokenType == DecafTokenType.EOF) continue; // skip EOF
+
             switch (token.tokenType) {
-                case LONGLITERAL, INTLITERAL, STRINGLITERAL, CHARLITERAL ->
-                    printStream.printf("%d %s %s%n", token.line, token.tokenType, token.lexeme);
+                case LONGLITERAL, INTLITERAL, STRINGLITERAL, CHARLITERAL, BOOLEANLITERAL ->
+                    ps.printf("%d %s %s%n", token.line, token.tokenType, token.lexeme);
 
                 case IDENTIFIER ->
-                    printStream.printf("%d IDENTIFIER %s%n", token.line, token.lexeme);
+                    ps.printf("%d IDENTIFIER %s%n", token.line, token.lexeme);
 
                 case INT, LONG, BOOL, IF, ELSE, FOR, WHILE, RETURN,
-                    BREAK, CONTINUE, TRUE, FALSE, IMPORT, VOID, LEN ->
-                    printStream.printf("%d %s%n", token.line, token.lexeme);
+                     BREAK, CONTINUE, IMPORT, VOID, LEN ->
+                    // Print the keyword as is, e.g. "int", "bool", etc.
+                    ps.printf("%d %s%n", token.line, token.lexeme);
 
                 default ->
-                    printStream.printf("%d %s%n", token.line, token.lexeme);
+                    // Operators, punctuation, etc.
+                    ps.printf("%d %s%n", token.line, token.lexeme);
             }
         }
     }
@@ -48,55 +45,42 @@ public class DecafCompiler {
     public static void main(String[] args) {
         CommandLineInterface.parse(args, new String[0]);
 
-        // Prepare input and output streams
-        try (InputStream inputStream = (CommandLineInterface.infile == null)
-                ? System.in
-                : Files.newInputStream(Path.of(CommandLineInterface.infile));
-             OutputStream outputStream = (CommandLineInterface.outfile == null)
-                ? System.out
-                : new PrintStream(new FileOutputStream(CommandLineInterface.outfile))) {
+        try (InputStream inputStream =
+                (CommandLineInterface.infile == null)
+                   ? System.in
+                   : Files.newInputStream(Path.of(CommandLineInterface.infile));
+             OutputStream outputStream =
+                (CommandLineInterface.outfile == null)
+                   ? System.out
+                   : new FileOutputStream(CommandLineInterface.outfile)) {
 
-            // Remember the file name for error reporting
             inputFilename = (CommandLineInterface.infile == null)
-                    ? "<stdin>"
-                    : CommandLineInterface.infile;
+                ? "<stdin>"
+                : CommandLineInterface.infile;
 
-            // Read entire input into a single string
             String source = readAll(inputStream);
 
-            // Dispatch based on the requested target
             switch (CommandLineInterface.target) {
                 case SCAN -> {
-                    // 1) Scan the input into tokens
                     DecafScanner scanner = new DecafScanner(source);
                     List<DecafToken> tokens = scanner.scanTokens();
-
                     if (!hadError) {
                         printTokens(tokens, outputStream);
                     } else {
                         System.exit(1);
                     }
                 }
-                case PARSE -> {
-                    // Placeholder for future parser integration
-                }
-                case INTER -> {
-                    // Placeholder for IR generation or intermediate representation
-                }
-                case ASSEMBLY -> {
-                    // Placeholder for assembly code generation
-                }
+                case PARSE -> { /* Placeholder for parser */ }
+                case INTER -> { /* Placeholder for IR gen */ }
+                case ASSEMBLY -> { /* Placeholder for assembly gen */ }
             }
 
         } catch (IOException ioe) {
-            System.err.printf("IOException encountered while processing file: %s%n", CommandLineInterface.infile);
+            System.err.printf("IOException reading '%s': %s%n", inputFilename, ioe.getMessage());
             System.exit(1);
         }
     }
 
-    /**
-     * Utility: Read the entire InputStream into a single String.
-     */
     private static String readAll(InputStream in) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         byte[] tmp = new byte[4096];
@@ -107,22 +91,15 @@ public class DecafCompiler {
         return buffer.toString();
     }
 
-    /**
-     * Report a lexical error (or any error) in a manner similar to Lox.error.
-     */
     public static void error(int line, int column, String message) {
-        // Adjust this format as needed to match your lab or test harness expectations
         System.err.printf("%s line %d:%d: %s%n", inputFilename, line, column, message);
         hadError = true;
     }
-
 }
 
-/* --------------------------------------------------------------------------
- * Below is a Lox-inspired scanner for Decaf, with an updated charLiteral()
- * that will produce errors when encountering newlines or multi-char sequences.
- * -------------------------------------------------------------------------- */
-
+// ------------------------------------------------------------------
+// Token Types
+// ------------------------------------------------------------------
 enum DecafTokenType {
     // Basic language constructs
     IDENTIFIER,
@@ -136,30 +113,27 @@ enum DecafTokenType {
 
     // Keywords
     INT, LONG, BOOL, IF, ELSE, FOR, WHILE, RETURN, BREAK, CONTINUE,
-    TRUE, FALSE, IMPORT, VOID, LEN,
+    IMPORT, VOID, LEN,
 
-    // Operators and punctuation
+    // Operators
     PLUS, MINUS, STAR, SLASH, PERCENT,
     EQUAL, PLUS_EQUAL, MINUS_EQUAL, STAR_EQUAL, SLASH_EQUAL, PERCENT_EQUAL,
     EQUAL_EQUAL, BANG_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL,
-    AND_AND, OR_OR, BANG,
-    PLUS_PLUS, MINUS_MINUS,
-    LEFT_PAREN, RIGHT_PAREN,
-    LEFT_BRACE, RIGHT_BRACE,
-    LEFT_BRACKET, RIGHT_BRACKET,
-    SEMICOLON, COMMA,
-    // We'll add an EOF token to mark end-of-file, but skip printing it.
+    AND_AND, OR_OR, BANG, PLUS_PLUS, MINUS_MINUS,
+    LEFT_PAREN, RIGHT_PAREN, LEFT_BRACE, RIGHT_BRACE,
+    LEFT_BRACKET, RIGHT_BRACKET, SEMICOLON, COMMA,
     EOF
 }
 
 class DecafToken {
     final DecafTokenType tokenType;
-    final String lexeme;   // The raw substring from the source
-    final Object literal;  // Parsed value if applicable (e.g., int value)
-    final int line;        // 1-based line number
-    final int column;      // 1-based column number
+    final String lexeme;
+    final Object literal;
+    final int line;
+    final int column;
 
-    DecafToken(DecafTokenType tokenType, String lexeme, Object literal, int line, int column) {
+    DecafToken(DecafTokenType tokenType, String lexeme, Object literal,
+               int line, int column) {
         this.tokenType = tokenType;
         this.lexeme = lexeme;
         this.literal = literal;
@@ -167,26 +141,25 @@ class DecafToken {
         this.column = column;
     }
 
-    @Override
     public String toString() {
-        // For debugging or extended output
-        return String.format("%s %s %s (line %d, col %d)",
-                tokenType, lexeme, literal, line, column);
+        return String.format("%s %s (line %d, col %d)",
+                tokenType, lexeme, line, column);
     }
 }
 
+// ------------------------------------------------------------------
+// Scanner
+// ------------------------------------------------------------------
 class DecafScanner {
-
     private final String source;
     private final List<DecafToken> tokens = new ArrayList<>();
 
-    // Cursor positions
-    private int start = 0;   // Start index of the current token
-    private int current = 0; // Current index as we scan forward
-    private int line = 1;    // 1-based line number
-    private int col = 1;     // 1-based column number
+    private int start = 0;
+    private int current = 0;
+    private int line = 1;
+    private int col = 1;
 
-    // A basic keyword map
+    // We do NOT include "true" / "false" here. They are recognized as BOOLEANLITERAL
     private static final Map<String, DecafTokenType> keywords = new HashMap<>();
     static {
         keywords.put("int", DecafTokenType.INT);
@@ -199,8 +172,6 @@ class DecafScanner {
         keywords.put("return", DecafTokenType.RETURN);
         keywords.put("break", DecafTokenType.BREAK);
         keywords.put("continue", DecafTokenType.CONTINUE);
-        keywords.put("true", DecafTokenType.TRUE);
-        keywords.put("false", DecafTokenType.FALSE);
         keywords.put("import", DecafTokenType.IMPORT);
         keywords.put("void", DecafTokenType.VOID);
         keywords.put("len", DecafTokenType.LEN);
@@ -210,15 +181,11 @@ class DecafScanner {
         this.source = source;
     }
 
-    /**
-     * Main entry point: scans the entire source and returns a list of tokens.
-     */
     List<DecafToken> scanTokens() {
         while (!isAtEnd()) {
             start = current;
             scanToken();
         }
-        // Add an EOF token for clarity (but we'll skip printing it in the main loop)
         tokens.add(new DecafToken(DecafTokenType.EOF, "", null, line, col));
         return tokens;
     }
@@ -226,45 +193,34 @@ class DecafScanner {
     private void scanToken() {
         char c = advance();
         switch (c) {
-            case '(': addToken(DecafTokenType.LEFT_PAREN); break;
-            case ')': addToken(DecafTokenType.RIGHT_PAREN); break;
-            case '{': addToken(DecafTokenType.LEFT_BRACE); break;
-            case '}': addToken(DecafTokenType.RIGHT_BRACE); break;
-            case '[': addToken(DecafTokenType.LEFT_BRACKET); break;
-            case ']': addToken(DecafTokenType.RIGHT_BRACKET); break;
-            case ';': addToken(DecafTokenType.SEMICOLON); break;
-            case ',': addToken(DecafTokenType.COMMA); break;
-            case '+':
-                if (match('+')) {
-                    addToken(DecafTokenType.PLUS_PLUS);
-                } else if (match('=')) {
-                    addToken(DecafTokenType.PLUS_EQUAL);
-                } else {
-                    addToken(DecafTokenType.PLUS);
-                }
-                break;
-            case '-':
-                if (match('-')) {
-                    addToken(DecafTokenType.MINUS_MINUS);
-                } else if (match('=')) {
-                    addToken(DecafTokenType.MINUS_EQUAL);
-                } else {
-                    addToken(DecafTokenType.MINUS);
-                }
-                break;
-            case '*':
-                if (match('=')) {
-                    addToken(DecafTokenType.STAR_EQUAL);
-                } else {
-                    addToken(DecafTokenType.STAR);
-                }
-                break;
-            case '/':
+            case '(' -> addToken(DecafTokenType.LEFT_PAREN);
+            case ')' -> addToken(DecafTokenType.RIGHT_PAREN);
+            case '{' -> addToken(DecafTokenType.LEFT_BRACE);
+            case '}' -> addToken(DecafTokenType.RIGHT_BRACE);
+            case '[' -> addToken(DecafTokenType.LEFT_BRACKET);
+            case ']' -> addToken(DecafTokenType.RIGHT_BRACKET);
+            case ';' -> addToken(DecafTokenType.SEMICOLON);
+            case ',' -> addToken(DecafTokenType.COMMA);
+            case '+' -> {
+                if (match('+')) addToken(DecafTokenType.PLUS_PLUS);
+                else if (match('=')) addToken(DecafTokenType.PLUS_EQUAL);
+                else addToken(DecafTokenType.PLUS);
+            }
+            case '-' -> {
+                if (match('-')) addToken(DecafTokenType.MINUS_MINUS);
+                else if (match('=')) addToken(DecafTokenType.MINUS_EQUAL);
+                else addToken(DecafTokenType.MINUS);
+            }
+            case '*' -> {
+                if (match('=')) addToken(DecafTokenType.STAR_EQUAL);
+                else addToken(DecafTokenType.STAR);
+            }
+            case '/' -> {
                 if (match('/')) {
-                    // Line comment: consume until EOL
-                    while (peek() != '\n' && !isAtEnd()) advance();
+                    // line comment
+                    while (!isAtEnd() && peek() != '\n') advance();
                 } else if (match('*')) {
-                    // Block comment (no nesting)
+                    // block comment
                     while (!isAtEnd()) {
                         if (peek() == '*' && peekNext() == '/') {
                             advance();
@@ -277,175 +233,241 @@ class DecafScanner {
                         }
                         advance();
                     }
-                } else if (match('=')) {
-                    addToken(DecafTokenType.SLASH_EQUAL);
-                } else {
-                    addToken(DecafTokenType.SLASH);
-                }
-                break;
-            case '%':
-                if (match('=')) {
-                    addToken(DecafTokenType.PERCENT_EQUAL);
-                } else {
-                    addToken(DecafTokenType.PERCENT);
-                }
-                break;
-            case '!':
-                addToken(match('=') ? DecafTokenType.BANG_EQUAL : DecafTokenType.BANG);
-                break;
-            case '=':
-                addToken(match('=') ? DecafTokenType.EQUAL_EQUAL : DecafTokenType.EQUAL);
-                break;
-            case '<':
-                addToken(match('=') ? DecafTokenType.LESS_EQUAL : DecafTokenType.LESS);
-                break;
-            case '>':
-                addToken(match('=') ? DecafTokenType.GREATER_EQUAL : DecafTokenType.GREATER);
-                break;
-            case '&':
-                if (match('&')) {
-                    addToken(DecafTokenType.AND_AND);
-                } else {
-                    DecafCompiler.error(line, col, "Unexpected character '&' (did you mean '&&'?).");
-                }
-                break;
-            case '|':
-                if (match('|')) {
-                    addToken(DecafTokenType.OR_OR);
-                } else {
-                    DecafCompiler.error(line, col, "Unexpected character '|' (did you mean '||'?).");
-                }
-                break;
-            case ' ':
-            case '\r':
-            case '\t':
-                // Skip whitespace
-                break;
-            case '\n':
-                line++;
-                col = 0;
-                break;
-            case '"':
-                stringLiteral();
-                break;
-            case '\'':
-                charLiteral();
-                break;
-            default:
-                if (isDigit(c)) {
-                    numberOrLongLiteral(c);
-                } else if (isAlpha(c)) {
-                    identifierOrKeyword();
-                } else {
-                    // Unknown character
-                    DecafCompiler.error(line, col, "Unexpected character '" + c + "'.");
-                }
-                break;
-        }
-    }
-
-    /**
-     * Handle string literals, e.g., "Hello".
-     * We don't handle advanced escape sequences here, but you could expand it.
-     */
-    private void stringLiteral() {
-        while (peek() != '"' && !isAtEnd()) {
-            if (peek() == '\n') {
+                } else if (match('=')) addToken(DecafTokenType.SLASH_EQUAL);
+                else addToken(DecafTokenType.SLASH);
+            }
+            case '%' -> {
+                if (match('=')) addToken(DecafTokenType.PERCENT_EQUAL);
+                else addToken(DecafTokenType.PERCENT);
+            }
+            case '!' -> {
+                if (match('=')) addToken(DecafTokenType.BANG_EQUAL);
+                else addToken(DecafTokenType.BANG);
+            }
+            case '=' -> {
+                if (match('=')) addToken(DecafTokenType.EQUAL_EQUAL);
+                else addToken(DecafTokenType.EQUAL);
+            }
+            case '<' -> {
+                if (match('=')) addToken(DecafTokenType.LESS_EQUAL);
+                else addToken(DecafTokenType.LESS);
+            }
+            case '>' -> {
+                if (match('=')) addToken(DecafTokenType.GREATER_EQUAL);
+                else addToken(DecafTokenType.GREATER);
+            }
+            case '&' -> {
+                if (match('&')) addToken(DecafTokenType.AND_AND);
+                else DecafCompiler.error(line, col, "Unexpected character '&'. Maybe '&&'?");
+            }
+            case '|' -> {
+                if (match('|')) addToken(DecafTokenType.OR_OR);
+                else DecafCompiler.error(line, col, "Unexpected character '|'. Maybe '||'?");
+            }
+            case ' ', '\r', '\t', '\f' -> { /* skip whitespace */ }
+            case '\n' -> {
                 line++;
                 col = 0;
             }
-            advance();
+            case '"' -> scanStringLiteral();
+            case '\'' -> scanCharLiteral();
+
+            default -> {
+                if (isDigit(c)) {
+                    scanNumberOrLongLiteral(c);
+                } else if (isAlpha(c)) {
+                    scanIdentifierOrKeyword();
+                } else {
+                    DecafCompiler.error(line, col,
+                        "Unexpected character '" + c + "'.");
+                }
+            }
         }
-        if (isAtEnd()) {
-            DecafCompiler.error(line, col, "Unterminated string literal.");
-            return;
-        }
-        // Consume the closing quote
-        advance();
-        String value = source.substring(start, current);
-        addToken(DecafTokenType.STRINGLITERAL, value);
     }
 
-    /**
-     * Strict charLiteral: exactly one character or one escape.
-     * If more than one char or a newline is present, we report an error.
-     */
-    private void charLiteral() {
-        // If at end, it's an immediate error
+    // ---------- BOOLEANS & KEYWORDS ----------
+    // For "true"/"false", we yield BOOLEANLITERAL. For "int"/"bool" etc., we yield keywords.
+    private void scanIdentifierOrKeyword() {
+        while (isAlphaNumeric(peek())) {
+            advance();
+        }
+        String text = source.substring(start, current);
+        
+        // If it's "true" or "false", treat it as a BOOLEANLITERAL
+        if (text.equals("true") || text.equals("false")) {
+            addToken(DecafTokenType.BOOLEANLITERAL, text);
+            return;
+        }
+        // Otherwise, check if it's a known keyword
+        DecafTokenType type = keywords.getOrDefault(text, DecafTokenType.IDENTIFIER);
+        addToken(type, text);
+    }
+
+    // ---------- STRING LITERAL ---------------
+    private void scanStringLiteral() {
+        StringBuilder sb = new StringBuilder();
+        sb.append('"'); // opening quote
+
+        while (!isAtEnd()) {
+            char c = peek();
+            if (c == '"') {
+                // closing quote
+                advance();
+                sb.append('"');
+                addToken(DecafTokenType.STRINGLITERAL, sb.toString());
+                return;
+            }
+            if (c == '\n') {
+                DecafCompiler.error(line, col, "Unterminated string literal before newline.");
+                advance();
+                return;
+            }
+            if (c == '\\') {
+                advance(); // consume '\'
+                if (isAtEnd()) {
+                    DecafCompiler.error(line, col, "Unfinished escape at EOF.");
+                    return;
+                }
+                char esc = peek();
+                switch (esc) {
+                    case '"':
+                        sb.append("\\\"");
+                        advance();
+                        break;
+                    case '\\':
+                        sb.append("\\\\");
+                        advance();
+                        break;
+                    case 't':
+                        sb.append("\\t");
+                        advance();
+                        break;
+                    case 'n':
+                        sb.append("\\n");
+                        advance();
+                        break;
+                    case 'r':
+                        sb.append("\\r");
+                        advance();
+                        break;
+                    case 'f':
+                        sb.append("\\f");
+                        advance();
+                        break;
+                    case '\'':
+                        sb.append("\\\'");
+                        advance();
+                        break;
+                    default:
+                        DecafCompiler.error(line, col,
+                            "Invalid escape sequence '\\" + esc + "' in string literal.");
+                        advance();
+                }
+            }
+            else {
+                if (!isPrintableChar(c)) {
+                    DecafCompiler.error(line, col, "Non-printable char in string: code=" + (int)c);
+                } else if (c == '\'' || c == '\\') {
+                    DecafCompiler.error(line, col, "Must escape '" + c + "' in string literal.");
+                }
+                sb.append(c);
+                advance();
+            }
+        }
+        DecafCompiler.error(line, col, "Unterminated string literal at EOF.");
+    }
+
+    // ---------- CHAR LITERAL ------------------
+    private void scanCharLiteral() {
         if (isAtEnd()) {
-            DecafCompiler.error(line, col, "Unterminated char literal (no character after opening quote).");
+            DecafCompiler.error(line, col, "Empty char literal.");
             return;
         }
-    
-        char next = peek();
-    
-        // If the next character is a newline, error out
-        if (next == '\n') {
-            DecafCompiler.error(line, col, "unexpected char: 0xA");
-            consumeUntilCharOrEOF('\'');
-            if (!isAtEnd() && peek() == '\'') advance(); // Skip the closing quote if present
-            return;
-        }
-    
-        // If the next character is a double quote, treat it as invalid.
-        if (next == '"') {
-            DecafCompiler.error(line, col, "unexpected char: '\"'");
-            consumeUntilCharOrEOF('\'');
-            if (!isAtEnd() && peek() == '\'') advance();
-            return;
-        }
-    
-        boolean sawEscape = (next == '\\');
-        advance(); // consume the next character
-    
-        // If it's an escape, consume one more character
-        if (sawEscape) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('\'');
+
+        char c = advance();
+        if (c == '\\') {
             if (isAtEnd()) {
                 DecafCompiler.error(line, col, "Incomplete escape in char literal.");
                 return;
             }
-            if (peek() == '\n') {
-                DecafCompiler.error(line, col, "unexpected char: 0xA inside escape");
-                consumeUntilCharOrEOF('\'');
-                if (!isAtEnd() && peek() == '\'') advance();
-                return;
+            char esc = peek();
+            switch (esc) {
+                case 'n', 't', 'r', 'f', '\\', '"', '\'' -> {
+                    sb.append('\\').append(esc);
+                    advance();
+                }
+                default -> {
+                    DecafCompiler.error(line, col,
+                        "Illegal backslashed char '\\"
+                        + esc + "' in char literal.");
+                    advance();
+                }
             }
-            // Read the escaped char (e.g. 'n' in '\n')
-            advance();
-        }
-    
-        // Now we expect the closing quote
-        if (isAtEnd()) {
-            DecafCompiler.error(line, col, "Unterminated char literal (missing closing single quote).");
-            return;
-        }
-    
-        // Another check for newline (in case the second char was a newline?)
-        if (peek() == '\n') {
-            DecafCompiler.error(line, col, "unexpected char: 0xA");
-            consumeUntilCharOrEOF('\'');
-            if (!isAtEnd() && peek() == '\'') advance();
-            return;
-        }
-    
-        // If we see the closing single quote, good. Otherwise, more than one char => error
-        if (peek() == '\'') {
-            advance(); // consume it
-            String value = source.substring(start, current);
-            addToken(DecafTokenType.CHARLITERAL, value);
         } else {
-            // More than one character
+            // normal char => ASCII 32..126, not ' " \
+            if (!isPrintableChar(c)) {
+                DecafCompiler.error(line, col, "Non-printable char code=" + (int)c + " in char literal.");
+            } else if (c == '\'' || c == '"' || c == '\\') {
+                DecafCompiler.error(line, col, "Char '" + c + "' must be escaped in char literal.");
+            }
+            sb.append(c);
+        }
+
+        // Now expect closing single quote
+        if (isAtEnd()) {
+            DecafCompiler.error(line, col, "Unterminated char literal (missing closing ').");
+            return;
+        }
+        if (peek() == '\'') {
+            advance();
+            sb.append('\'');
+            addToken(DecafTokenType.CHARLITERAL, sb.toString());
+        } else {
             consumeUntilCharOrEOF('\'');
             if (!isAtEnd() && peek() == '\'') {
-                advance();
+                advance(); 
             }
             DecafCompiler.error(line, col, "Too many characters in char literal or missing closing quote.");
         }
     }
 
-    /**
-     * Helper to consume until a certain character or EOF.
-     */
+    // ---------- NUMBER LITERAL ----------------
+    private void scanNumberOrLongLiteral(char firstDigit) {
+        // If it's 0x => hex
+        // (Note we ONLY check for lowercase 'x'. If you want to allow uppercase 'X',
+        //  you would handle that here. But the spec says uppercase is NOT recognized as hex.)
+        if (firstDigit == '0' && peek() == 'x') {
+            // consume the 'x'
+            advance();
+            // read hex digits
+            while (isHexDigit(peek())) {
+                advance();
+            }
+            // check for 'L'
+            if (peek() == 'L') {
+                advance();
+                addToken(DecafTokenType.LONGLITERAL, source.substring(start, current));
+            } else {
+                addToken(DecafTokenType.INTLITERAL, source.substring(start, current));
+            }
+        } else {
+            // decimal literal
+            while (isDigit(peek())) {
+                advance();
+            }
+            // check for 'L'
+            if (peek() == 'L') {
+                advance();
+                addToken(DecafTokenType.LONGLITERAL, source.substring(start, current));
+            } else {
+                addToken(DecafTokenType.INTLITERAL, source.substring(start, current));
+            }
+        }
+    }
+    
+
     private void consumeUntilCharOrEOF(char endChar) {
         while (!isAtEnd() && peek() != endChar) {
             if (peek() == '\n') {
@@ -456,79 +478,8 @@ class DecafScanner {
         }
     }
 
-    /**
-     * Distinguish between decimal or hex integer vs. long literal (ending in L).
-     */
-    private void numberOrLongLiteral(char firstDigit) {
-        if (firstDigit == '0' && (peek() == 'x' || peek() == 'X')) {
-            // Hex literal
-            advance(); // consume 'x'
-            while (isHexDigit(peek())) {
-                advance();
-            }
-        } else {
-            // Decimal literal
-            while (isDigit(peek())) {
-                advance();
-            }
-        }
-
-        // Check if the next character is 'L' => long
-        if (peek() == 'L') {
-            advance(); // consume L
-            addToken(DecafTokenType.LONGLITERAL, source.substring(start, current));
-        } else {
-            addToken(DecafTokenType.INTLITERAL, source.substring(start, current));
-        }
-    }
-
-    private void identifierOrKeyword() {
-        while (isAlphaNumeric(peek())) {
-            advance();
-        }
-        String text = source.substring(start, current);
-        DecafTokenType type = keywords.getOrDefault(text, DecafTokenType.IDENTIFIER);
-        addToken(type, text);
-    }
-
-    // ----- Utility Methods -----
-
-    private boolean match(char expected) {
-        if (isAtEnd()) return false;
-        if (source.charAt(current) != expected) return false;
-        current++;
-        col++;
-        return true;
-    }
-
-    private char peek() {
-        if (isAtEnd()) return '\0';
-        return source.charAt(current);
-    }
-
-    private char peekNext() {
-        if (current + 1 >= source.length()) return '\0';
-        return source.charAt(current + 1);
-    }
-
-    private boolean isAtEnd() {
-        return current >= source.length();
-    }
-
-    private char advance() {
-        char c = source.charAt(current);
-        current++;
-        col++;
-        return c;
-    }
-
-    private void addToken(DecafTokenType type) {
-        addToken(type, null);
-    }
-
-    private void addToken(DecafTokenType type, Object literal) {
-        String text = source.substring(start, current);
-        tokens.add(new DecafToken(type, text, literal, line, col));
+    private boolean isPrintableChar(char c) {
+        return (c >= 32 && c <= 126);
     }
 
     private boolean isAlpha(char c) {
@@ -549,5 +500,43 @@ class DecafScanner {
         return isDigit(c)
             || (c >= 'a' && c <= 'f')
             || (c >= 'A' && c <= 'F');
+    }
+
+    private char peek() {
+        if (isAtEnd()) return '\0';
+        return source.charAt(current);
+    }
+
+    private char peekNext() {
+        if (current + 1 >= source.length()) return '\0';
+        return source.charAt(current+1);
+    }
+
+    private boolean match(char expected) {
+        if (isAtEnd()) return false;
+        if (source.charAt(current) != expected) return false;
+        current++;
+        col++;
+        return true;
+    }
+
+    private char advance() {
+        char c = source.charAt(current);
+        current++;
+        col++;
+        return c;
+    }
+
+    private boolean isAtEnd() {
+        return current >= source.length();
+    }
+
+    private void addToken(DecafTokenType type) {
+        addToken(type, null);
+    }
+
+    private void addToken(DecafTokenType type, Object literal) {
+        String text = source.substring(start, current);
+        tokens.add(new DecafToken(type, text, literal, line, col));
     }
 }
