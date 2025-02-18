@@ -2,6 +2,13 @@ package decaf;
 
 import decaf.utils.CommandLineInterface;
 
+// ANTLR imports
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.TokenStream;
+import org.antlr.v4.runtime.tree.ParseTree;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,78 +17,97 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Combined DecafCompiler:
+ *  - SCAN => custom DecafScanner, printing tokens if no lexical errors.
+ *  - PARSE => use ANTLR's DecafLexer & DecafParser to parse 'program'.
+ */
 public class DecafCompiler {
 
     static boolean hadError = false;
     static String inputFilename = "";
 
-    private static void printTokens(List<DecafToken> tokens, OutputStream outputStream) {
-        PrintStream ps = (outputStream instanceof PrintStream)
-                ? (PrintStream) outputStream
-                : new PrintStream(outputStream);
-
-        for (DecafToken token : tokens) {
-            switch (token.tokenType) {
-                case LONGLITERAL, INTLITERAL, STRINGLITERAL, CHARLITERAL, BOOLEANLITERAL ->
-                    ps.printf("%d %s %s%n", token.line, token.tokenType, token.lexeme);
-
-                case IDENTIFIER ->
-                    ps.printf("%d IDENTIFIER %s%n", token.line, token.lexeme);
-
-                case INT, LONG, BOOL, IF, ELSE, FOR, WHILE, RETURN,
-                     BREAK, CONTINUE, IMPORT, VOID, LEN ->
-                    // Print the keyword as is, e.g. "int", "bool", etc.
-                    ps.printf("%d %s%n", token.line, token.lexeme);
-
-                default ->
-                    // Operators, punctuation, etc.
-                    ps.printf("%d %s%n", token.line, token.lexeme);
-            }
-        }
-    }
-
     public static void main(String[] args) {
         CommandLineInterface.parse(args, new String[0]);
 
-        try (InputStream inputStream =
-                (CommandLineInterface.infile == null)
-                   ? System.in
-                   : Files.newInputStream(Path.of(CommandLineInterface.infile));
-             OutputStream outputStream =
-                (CommandLineInterface.outfile == null)
-                   ? System.out
-                   : new FileOutputStream(CommandLineInterface.outfile)) {
+        try (InputStream inputStream = (CommandLineInterface.infile == null)
+                ? System.in
+                : Files.newInputStream(Path.of(CommandLineInterface.infile));
+             OutputStream outputStream = (CommandLineInterface.outfile == null)
+                ? System.out
+                : new PrintStream(new FileOutputStream(CommandLineInterface.outfile))) {
 
             inputFilename = (CommandLineInterface.infile == null)
-                ? "<stdin>"
-                : CommandLineInterface.infile;
+                    ? "<stdin>"
+                    : CommandLineInterface.infile;
 
+            // For both SCAN and PARSE, we read the entire input file as a String
+            // so we can (a) pass it to DecafScanner or (b) pass it to ANTLR CharStream.
             String source = readAll(inputStream);
 
             switch (CommandLineInterface.target) {
+
                 case SCAN -> {
+                    // 1) Use custom DecafScanner to tokenize
                     DecafScanner scanner = new DecafScanner(source);
                     List<DecafToken> tokens = scanner.scanTokens();
+
+                    // 2) If no lexical errors occurred, print tokens
                     if (!hadError) {
                         printTokens(tokens, outputStream);
                     } else {
                         System.exit(1);
                     }
                 }
+
                 case PARSE -> {
+                    // 1) Convert the source code string to an ANTLR CharStream
+                    CharStream charStream = CharStreams.fromString(source);
+
+                    // 2) Create the ANTLR-generated lexer
+                    DecafLexer lexer = new DecafLexer(charStream);
+
+                    // 3) Make a token stream for the parser
+                    TokenStream tokens = new CommonTokenStream(lexer);
+
+                    // 4) Create the ANTLR-generated parser
+                    DecafParser parser = new DecafParser(tokens);
+
+                    // 5) Parse the 'program' rule
+                    ParseTree tree = parser.program();
+
+                    // If the parser encountered any syntax errors, getNumberOfSyntaxErrors() > 0
+                    int numErrors = parser.getNumberOfSyntaxErrors();
+                    if (numErrors > 0) {
+                        System.err.println(numErrors + " parse errors.");
+                        System.exit(1);
+                    }
+
+                    // For demonstration: print the parse tree
+                    // (You can remove or replace with your own parse-tree usage)
+                    System.out.println(tree.toStringTree(parser));
                 }
+
                 case INTER -> {
+                    // IR / semantic analysis placeholder
+                    System.err.println("INTER not implemented.");
                 }
+
                 case ASSEMBLY -> {
+                    // Code generation placeholder
+                    System.err.println("ASSEMBLY not implemented.");
                 }
             }
 
         } catch (IOException ioe) {
-            System.err.printf("IOException reading '%s': %s%n", inputFilename, ioe.getMessage());
+            System.err.printf("IOException encountered while processing file: %s%n", inputFilename);
             System.exit(1);
         }
     }
 
+    /**
+     * Reads the entire InputStream into a single String.
+     */
     private static String readAll(InputStream in) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         byte[] tmp = new byte[4096];
@@ -92,11 +118,44 @@ public class DecafCompiler {
         return buffer.toString();
     }
 
+    /**
+     * Prints the tokens from the custom DecafScanner in the old style.
+     */
+    private static void printTokens(List<DecafToken> tokens, OutputStream out) {
+        PrintStream ps = (out instanceof PrintStream)
+                ? (PrintStream) out
+                : new PrintStream(out);
+
+        for (DecafToken token : tokens) {
+            switch (token.tokenType) {
+                case LONGLITERAL, INTLITERAL, STRINGLITERAL, CHARLITERAL, BOOLEANLITERAL ->
+                    ps.printf("%d %s %s%n", token.line, token.tokenType, token.lexeme);
+
+                case IDENTIFIER ->
+                    ps.printf("%d IDENTIFIER %s%n", token.line, token.lexeme);
+
+                // Print keywords as their lexeme, e.g. "int" => "int"
+                case INT, LONG, BOOL, IF, ELSE, FOR, WHILE, RETURN,
+                     BREAK, CONTINUE, IMPORT, VOID, LEN ->
+                    ps.printf("%d %s%n", token.line, token.lexeme);
+
+                default ->
+                    // Operators, punctuation, etc.
+                    ps.printf("%d %s%n", token.line, token.lexeme);
+            }
+        }
+    }
+
+    /**
+     * Report a lexical or scanning error. 
+     * (Used by DecafScanner for lexical errors.)
+     */
     public static void error(int line, int column, String message) {
         System.err.printf("%s line %d:%d: %s%n", inputFilename, line, column, message);
         hadError = true;
     }
 }
+
 
 // ------------------------------------------------------------------
 // Token Types

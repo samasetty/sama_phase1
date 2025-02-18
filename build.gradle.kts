@@ -18,13 +18,15 @@ repositories {
 }
 
 dependencies {
-    // Add your dependencies here
+    // Ensure the ANTLR runtime is on the classpath
+    implementation("org.antlr:antlr4-runtime:4.13.0")
+
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
-// Make sure to change this class if the entry point of your program changes
 application {
+    // Make sure to change this class if the entry point of your program changes
     mainClass.set("decaf.DecafCompiler")
 }
 
